@@ -1,6 +1,6 @@
 # EDR-Enum-BOF — AdaptixC2 Extension
 
-Service and driver enumeration BOF for [AdaptixC2](https://github.com/Adaptix-Framework/AdaptixC2), ported from [CS-EDR-Enumeration](https://github.com/VirtualAllocEx/CS-EDR-Enumeration) by VirtualAllocEx.
+Service and driver enumeration BOF for [AdaptixC2](https://github.com/Adaptix-Framework/AdaptixC2), ported from [CS-EDR-Enumeration](https://github.com/VirtualAlllocEx/CS-EDR-Enumeration) by VirtualAllocEx.
 
 Enumerates running Win32 services and kernel drivers via the Service Control Manager (SCM), then automatically cross-references the results against a signature database of **444 signatures across 48 security vendors** to identify AV, EDR, and EPP products present on the target.
 
