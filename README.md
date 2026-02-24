@@ -118,5 +118,5 @@ edr_enum/
 
 ## Credits
 
-- [VirtualAllocEx](https://github.com/VirtualAllocEx) — original [CS-EDR-Enumeration](https://github.com/VirtualAllocEx/CS-EDR-Enumeration) for Cobalt Strike (signature database + BOF logic)
+- original [CS-EDR-Enumeration](https://github.com/VirtualAlllocEx/CS-EDR-Enumeration) for Cobalt Strike (signature database + BOF logic)
 - [Adaptix-Framework](https://github.com/Adaptix-Framework) — AdaptixC2 and Extension-Kit
