@@ -464,12 +464,28 @@ var DRV_SIGS = {
 // Helpers
 // ============================================================================
 
-function matchSigs(names, db) {
+function normalize(s) {
+    return s.trim().toLowerCase().replace(/[-_\s]+/g, "");
+}
+
+var _normCache = {};
+function getNormDb(db, tag) {
+    if (_normCache[tag]) return _normCache[tag];
+    var nd = {};
+    for (var k in db) {
+        if (db.hasOwnProperty(k)) nd[normalize(k)] = db[k];
+    }
+    _normCache[tag] = nd;
+    return nd;
+}
+
+function matchSigs(names, db, tag) {
+    var ndb = getNormDb(db, tag);
     var hits = [];
     for (var i = 0; i < names.length; i++) {
-        var n = names[i].trim().toLowerCase();
-        if (db.hasOwnProperty(n)) {
-            var parts = db[n].split("|");
+        var n = normalize(names[i]);
+        if (ndb.hasOwnProperty(n)) {
+            var parts = ndb[n].split("|");
             hits.push({
                 name:    names[i].trim(),
                 vendor:  parts[0] ? parts[0].trim() : "?",
@@ -544,7 +560,7 @@ cmd_edr_both.setPreHook(function (id, cmdline, parsed_json, ...parsed_lines) {
         var p = parseBofOutput(task.text);
         if (p.svcs.length === 0 && p.drvs.length === 0) return task;
         fired = true;
-        task.text += formatResults(matchSigs(p.svcs, SVC_SIGS), matchSigs(p.drvs, DRV_SIGS), p.svcs.length, p.drvs.length);
+        task.text += formatResults(matchSigs(p.svcs, SVC_SIGS, "svc"), matchSigs(p.drvs, DRV_SIGS, "drv"), p.svcs.length, p.drvs.length);
         return task;
     };
     ax.execute_alias(id, cmdline, `execute bof ${bof_path} ${bof_params}`, "Task: EDR enum (services + drivers)", hook);
@@ -560,7 +576,7 @@ cmd_edr_svc.setPreHook(function (id, cmdline, parsed_json, ...parsed_lines) {
         var p = parseBofOutput(task.text);
         if (p.svcs.length === 0) return task;
         fired = true;
-        task.text += formatResults(matchSigs(p.svcs, SVC_SIGS), [], p.svcs.length, 0);
+        task.text += formatResults(matchSigs(p.svcs, SVC_SIGS, "svc"), [], p.svcs.length, 0);
         return task;
     };
     ax.execute_alias(id, cmdline, `execute bof ${bof_path} ${bof_params}`, "Task: EDR enum (services only)", hook);
@@ -576,7 +592,7 @@ cmd_edr_drv.setPreHook(function (id, cmdline, parsed_json, ...parsed_lines) {
         var p = parseBofOutput(task.text);
         if (p.drvs.length === 0) return task;
         fired = true;
-        task.text += formatResults([], matchSigs(p.drvs, DRV_SIGS), 0, p.drvs.length);
+        task.text += formatResults([], matchSigs(p.drvs, DRV_SIGS, "drv"), 0, p.drvs.length);
         return task;
     };
     ax.execute_alias(id, cmdline, `execute bof ${bof_path} ${bof_params}`, "Task: EDR enum (drivers only)", hook);
