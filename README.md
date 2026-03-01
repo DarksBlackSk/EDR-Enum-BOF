@@ -108,7 +108,8 @@ make remote       # produces edr_remote_bof.x64.o & edr_remote_bof.x86.o
 
 1. Load the edr_enum.axs script into your Adaptix client.
 
-<img width="1222" height="755" alt="image" src="https://github.com/user-attachments/assets/e550296a-704c-466c-9189-205ce8378226" />
+<img width="1215" height="755" alt="image" src="https://github.com/user-attachments/assets/60754b2f-eb0a-4c65-9159-7dafec14e026" />
+
 
 2. Run against any Windows beacon:
 
@@ -116,11 +117,15 @@ make remote       # produces edr_remote_bof.x64.o & edr_remote_bof.x86.o
 edr_both
 edr_svc
 edr_drv
+edr_remote
 ```
 
-<img width="1541" height="459" alt="image" src="https://github.com/user-attachments/assets/54f001b2-d801-43fb-98f2-a157627a3acc" />
+<img width="1651" height="706" alt="image" src="https://github.com/user-attachments/assets/6f0f2a4f-e51f-43b2-9878-306e6e949703" />
 
 <img width="1685" height="876" alt="image" src="https://github.com/user-attachments/assets/dbb35754-6256-4734-aabe-10ab52ebfef4" />
+
+<img width="1651" height="583" alt="image" src="https://github.com/user-attachments/assets/7eb6988d-dd77-42bc-af26-c56bf5284d09" />
+
 
 ---
 
@@ -133,8 +138,11 @@ edr_enum/
 ├── _bin/
 │   └── edr_enum_bof.x64.o
 │   └── edr_enum_bof.x86.o
+│   └── edr_remote_bof.x64.o
+│   └── edr_remote_bof.x86.o
 └── src/
-    ├── edr_enum_bof.c    
+    ├── edr_enum_bof.c
+    ├── edr_remote_bof.c    
     ├── beacon.h          
     ├── bofdefs.h         
     └── base.c           
