@@ -15,10 +15,12 @@ Enumerates running Win32 services and kernel drivers via the Service Control Man
 | `edr_both` | Enumerate services + drivers (default) |
 | `edr_svc` | Enumerate Win32 services only |
 | `edr_drv` | Enumerate kernel drivers only |
+| `edr_remote` | Enumerate Remote LsarLookupNames + SCM |
+
 
 ---
 
-## Output example
+## Output example `edr_both`
 
 ```
 ====================================================
@@ -38,6 +40,31 @@ Drivers matched (2):
   [AV]        Microsoft - Defender Minifilter  (WdFilter)
 
 88 services + 121 drivers enumerated  |  6 svc + 2 drv hits
+```
+
+## Output example `edr_remote`
+
+```
+=== EDR Remote Enum: \\DC.redtops.htb ===
+[*] Using current beacon token
+
+[*] Checking installed services via LsarLookupNames...
+  [INSTALLED][AV ] Microsoft | Windows Defender AV | AV  (svc: WinDefend)
+  [INSTALLED][EDR] Microsoft | Defender for Endpoint | EDR  (svc: Sense)
+  [INSTALLED][AV ] Microsoft | Defender Network Inspection | AV  (svc: WdNisSvc)
+  [INSTALLED][AV ] Microsoft | Defender Firewall | AV  (svc: mpssvc)
+  [INSTALLED][AV ] Microsoft | Security Health | AV  (svc: securityhealthservice)
+
+[*] Checking kernel drivers via remote SCM...
+  [INSTALLED][EDR] Microsoft | Defender for Endpoint Minifilter | EDR  (drv: MsSecFlt)
+  [INSTALLED][AV ] Microsoft | Defender Boot Driver | AV  (drv: WdBoot)
+  [INSTALLED][AV ] Microsoft | Defender Minifilter | AV  (drv: WdFilter)
+  [INSTALLED][AV ] Microsoft | Defender NIS Driver | AV  (drv: WdNisDrv)
+
+====================================================
+  Target: \\DC.redtops.htb
+  [INSTALLED] = registered in SCM (may be stopped)
+====================================================
 ```
 
 ### Threat levels
@@ -70,10 +97,9 @@ Drivers matched (2):
 sudo apt install mingw-w64
 
 # Compile
-mkdir -p _bin
-make all        # _bin/edr_enum_bof.x64.o & _bin/edr_enum_bof.x86.o
-make x64        # produces _bin/edr_enum_bof.x64.o
-make x86        # produces _bin/edr_enum_bof.x86.o
+make clean; make all        # _bin/edr_enum_bof.x64.o, _bin/edr_enum_bof.x86.o, edr_remote_bof.x64.o & edr_remote_bof.x86.o
+make local        # produces _bin/edr_enum_bof.x64.o & _bin/edr_enum_bof.x86.o
+make remote       # produces edr_remote_bof.x64.o & edr_remote_bof.x86.o
 ```
 
 ---
