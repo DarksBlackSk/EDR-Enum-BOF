@@ -1,10 +1,10 @@
 var metadata = {
-    name: "EDR-Enum-BOF",
-    description: "EDR/AV/EPP service & driver enumeration via SCM BOF - 444 signatures, 48 vendors"
+    name: "EDR-BOF",
+    description: "EDR/AV/EPP enumeration BOF suite — local (services + drivers + processes) and remote (LsarLookupNames + SCM). 444 signatures, 48 vendors."
 };
 
 // ============================================================================
-// Signature databases  (ported from CS-EDR-Enumeration v2.5.0)
+// Signature databases (used by local BOF post-processing)
 // ============================================================================
 
 var PROC_SIGS = {
@@ -270,7 +270,7 @@ var SVC_SIGS = {
     "macmnsvc": "Trellix | McAfee Agent | EPP",
     "masvc": "Trellix | McAfee Agent | EPP",
     "mbamservice": "Malwarebytes | Service | AV",
-    "mdcoresvc": "Microsoft | Defender Core Service | AV",
+    "mdcoresvc": "Microsoft | Defender Core | AV",
     "mediapatcher": "Check Point | Media Encryption | EPP",
     "mfeesp": "Trellix | McAfee Endpoint Security | EPP",
     "mfefire": "Trellix | McAfee Firewall | EPP",
@@ -314,6 +314,7 @@ var SVC_SIGS = {
     "v3svc": "AhnLab | V3 Endpoint | AV",
     "velociraptor": "Velociraptor | Agent | DFIR",
     "wazuhsvc": "Wazuh | Agent | SIEM-EDR",
+    "wdnissvc": "Microsoft | Defender Network Inspection | AV",
     "webthreatdefsvc": "Microsoft | Web Threat Defense | AV",
     "webthreatdefusersvc": "Microsoft | Web Threat Defense (User) | AV",
     "windefend": "Microsoft | Windows Defender AV | AV",
@@ -461,7 +462,7 @@ var DRV_SIGS = {
 };
 
 // ============================================================================
-// Helpers
+// Helpers (used by local BOF post-processing)
 // ============================================================================
 
 function normalize(s) {
@@ -547,12 +548,14 @@ function parseBofOutput(text) {
 }
 
 // ============================================================================
-// Commands
+// LOCAL BOF commands
 // ============================================================================
 
-var cmd_edr_both = ax.create_command("edr_both", "EDR enum: services + drivers via BOF [NOISE: *]", "edr_both");
+var cmd_edr_both = ax.create_command("edr_both",
+    "Local EDR enum: services + drivers [NOISE: low]",
+    "edr_both");
 cmd_edr_both.setPreHook(function (id, cmdline, parsed_json, ...parsed_lines) {
-    var bof_path = ax.script_dir() + "_bin/edr_enum_bof." + ax.arch(id) + ".o";
+    var bof_path   = ax.script_dir() + "_bin/edr_enum_bof." + ax.arch(id) + ".o";
     var bof_params = ax.bof_pack("short", [0]);
     var fired = false;
     var hook = function (task) {
@@ -566,9 +569,11 @@ cmd_edr_both.setPreHook(function (id, cmdline, parsed_json, ...parsed_lines) {
     ax.execute_alias(id, cmdline, `execute bof ${bof_path} ${bof_params}`, "Task: EDR enum (services + drivers)", hook);
 });
 
-var cmd_edr_svc = ax.create_command("edr_svc", "EDR enum: Win32 services only via BOF [NOISE: *]", "edr_svc");
+var cmd_edr_svc = ax.create_command("edr_svc",
+    "Local EDR enum: Win32 services only [NOISE: low]",
+    "edr_svc");
 cmd_edr_svc.setPreHook(function (id, cmdline, parsed_json, ...parsed_lines) {
-    var bof_path = ax.script_dir() + "_bin/edr_enum_bof." + ax.arch(id) + ".o";
+    var bof_path   = ax.script_dir() + "_bin/edr_enum_bof." + ax.arch(id) + ".o";
     var bof_params = ax.bof_pack("short", [1]);
     var fired = false;
     var hook = function (task) {
@@ -582,9 +587,11 @@ cmd_edr_svc.setPreHook(function (id, cmdline, parsed_json, ...parsed_lines) {
     ax.execute_alias(id, cmdline, `execute bof ${bof_path} ${bof_params}`, "Task: EDR enum (services only)", hook);
 });
 
-var cmd_edr_drv = ax.create_command("edr_drv", "EDR enum: kernel drivers only via BOF [NOISE: *]", "edr_drv");
+var cmd_edr_drv = ax.create_command("edr_drv",
+    "Local EDR enum: kernel drivers only [NOISE: low]",
+    "edr_drv");
 cmd_edr_drv.setPreHook(function (id, cmdline, parsed_json, ...parsed_lines) {
-    var bof_path = ax.script_dir() + "_bin/edr_enum_bof." + ax.arch(id) + ".o";
+    var bof_path   = ax.script_dir() + "_bin/edr_enum_bof." + ax.arch(id) + ".o";
     var bof_params = ax.bof_pack("short", [2]);
     var fired = false;
     var hook = function (task) {
@@ -598,5 +605,40 @@ cmd_edr_drv.setPreHook(function (id, cmdline, parsed_json, ...parsed_lines) {
     ax.execute_alias(id, cmdline, `execute bof ${bof_path} ${bof_params}`, "Task: EDR enum (drivers only)", hook);
 });
 
-var group_edr = ax.create_commands_group("EDR-Enum-BOF", [cmd_edr_both, cmd_edr_svc, cmd_edr_drv]);
+// ============================================================================
+// REMOTE BOF command
+// ============================================================================
+
+var cmd_edr_remote = ax.create_command("edr_remote",
+    "Remote EDR enum via LsarLookupNames + SCM (services + kernel drivers) [NOISE: low-medium]",
+    "edr_remote 192.168.1.10\nedr_remote 192.168.1.10 -u DOMAIN\\\\user -p password");
+
+cmd_edr_remote.addArgString("target", true, "Target IP or hostname (e.g. 192.168.1.10)");
+cmd_edr_remote.addArgFlagString("-u", "user", "DOMAIN\\user for explicit authentication (optional)", "");
+cmd_edr_remote.addArgFlagString("-p", "pass", "Password for explicit authentication (optional)", "");
+
+cmd_edr_remote.setPreHook(function (id, cmdline, parsed_json, ...parsed_lines) {
+    var target = parsed_json["target"] || "";
+    var user   = parsed_json["user"]   || "";
+    var pass   = parsed_json["pass"]   || "";
+
+    var unc_target = target.startsWith("\\\\") ? target : "\\\\" + target;
+
+    var bof_path   = ax.script_dir() + "_bin/edr_remote_bof." + ax.arch(id) + ".o";
+    var bof_params = ax.bof_pack("wstr,wstr,wstr", [unc_target, user, pass]);
+    var message    = "Task: Remote EDR enum on " + target;
+
+    ax.execute_alias(id, cmdline, `execute bof ${bof_path} ${bof_params}`, message, null);
+});
+
+// ============================================================================
+// Register all commands in a single group
+// ============================================================================
+
+var group_edr = ax.create_commands_group("EDR-BOF", [
+    cmd_edr_both,
+    cmd_edr_svc,
+    cmd_edr_drv,
+    cmd_edr_remote
+]);
 ax.register_commands_group(group_edr, ["beacon", "gopher", "kharon"], ["windows"], []);
