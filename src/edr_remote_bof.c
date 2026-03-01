@@ -9,7 +9,7 @@
  *
  * Ported signature logic from:
  *   CS-EDR-Enumeration by VirtualAlllocEx
- *   enum_av nxc module by @mpgn_x64 / @an0n_r0
+ *   enum_av nxc module
  */
 
 #include <windows.h>
@@ -53,6 +53,22 @@ DECLSPEC_IMPORT DWORD WINAPI MPR$WNetCancelConnection2W(
     LPCWSTR lpName,
     DWORD dwFlags,
     BOOL fForce);
+
+/* ADVAPI32 — SCM service status */
+DECLSPEC_IMPORT SC_HANDLE WINAPI ADVAPI32$OpenServiceA(
+    SC_HANDLE hSCManager,
+    LPCSTR    lpServiceName,
+    DWORD     dwDesiredAccess);
+
+DECLSPEC_IMPORT BOOL WINAPI ADVAPI32$QueryServiceStatusEx(
+    SC_HANDLE       hService,
+    SC_STATUS_TYPE  InfoLevel,
+    LPBYTE          lpBuffer,
+    DWORD           cbBufSize,
+    LPDWORD         pcbBytesNeeded);
+
+/* Forward declaration */
+static void record_match(const char *svc_name, const char *info, BOOL is_drv);
 
 /* =========================================================================
  * Signature database — services + pipes
@@ -648,6 +664,7 @@ static int phase_lsar_services(LSA_HANDLE hPolicy,
                 *out_epp = 1;
             }
             found++;
+            record_match(SVC_SIGS[i].name, info, FALSE);
         }
     }
 
@@ -752,6 +769,7 @@ static int phase_scm_drivers(const char *target_mb,
                     internal_printf("  [INSTALLED][OTH] %s  (drv: %s)\n", info, drv_name);
                 }
                 found++;
+                record_match(DRV_SIGS[j].name, info, TRUE);
                 break;
             }
         }
@@ -767,6 +785,119 @@ static int phase_scm_drivers(const char *target_mb,
         internal_printf("  (none matched)\n");
 
     return found;
+}
+
+/* =========================================================================
+ * Phase 3 — SCM service status check
+ * ========================================================================= */
+
+#define MAX_MATCHES 64
+
+typedef struct {
+    const char *svc_name;
+    const char *info;
+    BOOL        is_drv;
+} MATCH_ENTRY;
+
+static MATCH_ENTRY g_matches[MAX_MATCHES];
+static int         g_match_count = 0;
+
+static void record_match(const char *svc_name, const char *info, BOOL is_drv)
+{
+    if (g_match_count >= MAX_MATCHES) return;
+    g_matches[g_match_count].svc_name = svc_name;
+    g_matches[g_match_count].info     = info;
+    g_matches[g_match_count].is_drv   = is_drv;
+    g_match_count++;
+}
+
+static void phase_scm_status(const char *target_mb)
+{
+    if (g_match_count == 0) return;
+
+    internal_printf("\n[*] Querying service status via SCM...\n");
+
+    /* SC_MANAGER_CONNECT — lowest privilege, any authenticated user */
+    SC_HANDLE hScm = ADVAPI32$OpenSCManagerA(
+        target_mb,
+        NULL,
+        SC_MANAGER_CONNECT);
+
+    if (!hScm) {
+        internal_printf("  [-] OpenSCManagerA failed (err: %lu)\n", KERNEL32$GetLastError());
+        return;
+    }
+
+    int running = 0;
+    int stopped = 0;
+
+    for (int i = 0; i < g_match_count; i++) {
+        const char *svc_name = g_matches[i].svc_name;
+        const char *info     = g_matches[i].info;
+        const char *tag      = g_matches[i].is_drv ? "drv" : "svc";
+
+        /* Extraer categoría de "Vendor | Product | CAT" */
+        const char *p1  = MSVCRT$strstr(info, " | ");
+        const char *cat = NULL;
+        if (p1) {
+            const char *p2 = MSVCRT$strstr(p1 + 3, " | ");
+            if (p2) cat = p2 + 3;
+        }
+        const char *cat_tag = "OTH";
+        if (cat) {
+            if      (MSVCRT$_stricmp(cat, "EDR") == 0)                    cat_tag = "EDR";
+            else if (MSVCRT$_stricmp(cat, "AV") == 0)                     cat_tag = "AV ";
+            else if (MSVCRT$_stricmp(cat, "EPP") == 0)                    cat_tag = "EPP";
+            else if (MSVCRT$_stricmp(cat, "Telemetry") == 0 ||
+                     MSVCRT$_stricmp(cat, "SIEM-EDR") == 0  ||
+                     MSVCRT$_stricmp(cat, "DFIR") == 0)                    cat_tag = "TEL";
+        }
+
+        SC_HANDLE hSvc = ADVAPI32$OpenServiceA(
+            hScm,
+            svc_name,
+            SERVICE_QUERY_STATUS);
+
+        if (!hSvc) {
+            /* ACCESS_DENIED or not found — skip silently */
+            continue;
+        }
+
+        SERVICE_STATUS_PROCESS ssp;
+        DWORD dwBytesNeeded = 0;
+        BOOL ok = ADVAPI32$QueryServiceStatusEx(
+            hSvc,
+            SC_STATUS_PROCESS_INFO,
+            (LPBYTE)&ssp,
+            sizeof(ssp),
+            &dwBytesNeeded);
+
+        ADVAPI32$CloseServiceHandle(hSvc);
+
+        if (!ok) continue;
+
+        if (ssp.dwCurrentState == SERVICE_RUNNING) {
+            internal_printf("  [RUNNING ][%s] %s  (%s: %s)\n", cat_tag, info, tag, svc_name);
+            running++;
+        } else {
+            const char *state_str = "STOPPED";
+            switch (ssp.dwCurrentState) {
+                case SERVICE_STOPPED:          state_str = "STOPPED";          break;
+                case SERVICE_START_PENDING:    state_str = "START_PENDING";    break;
+                case SERVICE_STOP_PENDING:     state_str = "STOP_PENDING";     break;
+                case SERVICE_PAUSED:           state_str = "PAUSED";           break;
+                case SERVICE_PAUSE_PENDING:    state_str = "PAUSE_PENDING";    break;
+                case SERVICE_CONTINUE_PENDING: state_str = "CONTINUE_PENDING"; break;
+            }
+            internal_printf("  [%-16s][%s] %s  (%s: %s)\n", state_str, cat_tag, info, tag, svc_name);
+            stopped++;
+        }
+    }
+
+    ADVAPI32$CloseServiceHandle(hScm);
+
+    if (running == 0 && stopped == 0)
+        internal_printf("  (status query denied for all detected products)\n");
 }
 
 /* =========================================================================
@@ -846,10 +977,6 @@ void go(char *args, int len)
             internal_printf("[-] WNetAddConnection2W failed: %lu — trying with current token\n", ret);
         }
 
-        /* Step 2: LogonUserW + ImpersonateLoggedOnUser so OpenSCManagerA
-         * uses the explicit credentials token, not the process token.
-         * This is needed when running from a DC or when UAC token filtering
-         * would otherwise strip admin privileges on the remote SCM call. */
         wchar_t *pass_w = (cred_pass && MSVCRT$wcslen(cred_pass) > 0) ? cred_pass : L"";
         BOOL logon_ok = ADVAPI32$LogonUserW(
             user_part,
@@ -899,12 +1026,17 @@ void go(char *args, int len)
         ADVAPI32$LsaClose(hPolicy_shared);
     }
 
-    /* Phase 2 — kernel drivers via remote SCM (OpenSCManagerA + EnumServicesStatusExA) */
+    /* Phase 2 — controladores del kernel a través de SCM remoto  */
     phase_scm_drivers(target_mb, &installed_edr, &installed_av, &installed_telemetry, &installed_epp);
+
+    /* Phase 3 — Consultar el estado de ejecución de todos los servicios y controladores detectados */
+    phase_scm_status(target_mb);
 
     internal_printf("\n====================================================\n");
     internal_printf("  Target: %s\n", target_mb);
     internal_printf("  [INSTALLED] = registered in SCM (may be stopped)\n");
+    internal_printf("  [RUNNING  ] = confirmed active via QueryServiceStatusEx\n");
+    internal_printf("  [STOPPED  ] = installed but not running\n");
     internal_printf("====================================================\n\n");
 
     /* --- Cleanup --- */
