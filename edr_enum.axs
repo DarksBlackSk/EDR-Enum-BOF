@@ -628,7 +628,7 @@ cmd_edr_remote.setPreHook(function (id, cmdline, parsed_json, ...parsed_lines) {
     var bof_params = ax.bof_pack("wstr,wstr,wstr", [unc_target, user, pass]);
     var message    = "Task: Remote EDR enum on " + target;
 
-    ax.execute_alias(id, cmdline, `execute bof ${bof_path} ${bof_params}`, message, null);
+    ax.execute_alias(id, cmdline, `execute bof -a ${bof_path} ${bof_params}`, message, null);
 });
 
 // ============================================================================
